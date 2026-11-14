@@ -283,12 +283,12 @@ def guardar_registro(usuario: Dict[str, str], resultado: ResultadoSimulacion) ->
 
 
 # ==============================================================================
-# 4. SIMULACIÓN GRÁFICA EN CANVAS HTML5 (SIN LIBRERÍAS EXTERNAS)
+# 4. SIMULACIÓN GRÁFICA EN CANVAS HTML5 (SIN F-STRINGS)
 # ==============================================================================
 
 def renderizar_animacion_canvas(res_dict: Dict[str, Any]) -> None:
-    datos_json = json.dumps(res_dict)
-    html_code = f"""
+    datos_json = json.dumps(res_dict).replace("</", "<\\/")
+    html_template = """
     <div style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:12px; font-family:sans-serif;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
         <span style="color:#38bdf8; font-weight:bold; font-size:14px;">Simulación Visual de la Interacción</span>
@@ -299,18 +299,18 @@ def renderizar_animacion_canvas(res_dict: Dict[str, Any]) -> None:
       <canvas id="simCanvas" width="760" height="195" style="width:100%; height:195px; background:linear-gradient(180deg, #0b1220 0%, #132a1c 100%); border-radius:8px; display:block;"></canvas>
     </div>
     <script>
-      const res = {datos_json};
+      const res = __DATOS_JSON__;
       const canvas = document.getElementById("simCanvas");
       const ctx = canvas.getContext("2d");
       let animId = null;
 
-      function iniciarAnimacion() {{
+      function iniciarAnimacion() {
         if (animId) cancelAnimationFrame(animId);
         const c1 = res.cuerpo_1;
         const c2 = res.cuerpo_2;
         let progreso = 0;
 
-        function frame() {{
+        function frame() {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
 
           ctx.strokeStyle = "#475569";
@@ -329,9 +329,231 @@ def renderizar_animacion_canvas(res_dict: Dict[str, Any]) -> None:
           ctx.font = "bold 14px sans-serif";
           ctx.fillText(faseTexto, 20, 26);
 
-          if (!c2) {{
+          if (!c2) {
             let x1, velActual;
-            if (progreso < 0.5) {{
+            if (progreso < 0.5) {
               const t = progreso / 0.5;
               x1 = 120 + t * (centroX - 120);
-              velActual = c1.
+              velActual = c1.vel_inicial;
+            } else {
+              const t = (progreso - 0.5) / 0.5;
+              const dir = Math.sign(c1.vel_final || 1);
+              x1 = centroX + dir * t * 250;
+              velActual = c1.vel_final;
+            }
+            x1 = Math.max(40, Math.min(canvas.width - 40, x1));
+
+            if (progreso >= 0.47 && progreso <= 0.55) {
+              ctx.fillStyle = "rgba(250, 204, 21, 0.35)";
+              ctx.beginPath(); ctx.arc(centroX, 120, 34, 0, Math.PI * 2); ctx.fill();
+            }
+
+            ctx.fillStyle = "#f8fafc";
+            ctx.beginPath(); ctx.arc(x1, 120, 14, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 2; ctx.stroke();
+
+            ctx.fillStyle = "#e2e8f0";
+            ctx.font = "13px sans-serif";
+            ctx.fillText("Bola: v = " + velActual.toFixed(2) + " m/s", x1 - 50, 90);
+          } else {
+            let x1, x2, v1Act, v2Act;
+            const maxV = Math.max(Math.abs(c1.vel_inicial), Math.abs(c2.vel_inicial), Math.abs(c1.vel_final), Math.abs(c2.vel_final), 1);
+
+            if (progreso < 0.5) {
+              const t = progreso / 0.5;
+              x1 = (centroX - 230) + t * 215;
+              x2 = (centroX + 230) - t * 215;
+              v1Act = c1.vel_inicial;
+              v2Act = c2.vel_inicial;
+            } else {
+              const t = (progreso - 0.5) / 0.5;
+              x1 = (centroX - 15) + (c1.vel_final / maxV) * t * 240;
+              x2 = (centroX + 15) + (c2.vel_final / maxV) * t * 240;
+              v1Act = c1.vel_final;
+              v2Act = c2.vel_final;
+            }
+            x1 = Math.max(35, Math.min(canvas.width - 35, x1));
+            x2 = Math.max(35, Math.min(canvas.width - 35, x2));
+
+            if (progreso >= 0.47 && progreso <= 0.55) {
+              ctx.fillStyle = "rgba(249, 115, 22, 0.4)";
+              ctx.beginPath(); ctx.arc(centroX, 120, 38, 0, Math.PI * 2); ctx.fill();
+            }
+
+            ctx.fillStyle = "#f8fafc";
+            ctx.beginPath(); ctx.arc(x1, 120, 13, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 2; ctx.stroke();
+
+            ctx.fillStyle = "#f59e0b";
+            ctx.fillRect(x2 - 12, 98, 24, 42);
+
+            ctx.fillStyle = "#e2e8f0";
+            ctx.font = "13px sans-serif";
+            ctx.fillText("Bola: " + v1Act.toFixed(1) + " m/s", x1 - 40, 84);
+            ctx.fillStyle = "#fcd34d";
+            ctx.fillText("Cuerpo 2: " + v2Act.toFixed(1) + " m/s", x2 - 44, 172);
+          }
+
+          progreso += 0.008;
+          if (progreso <= 1.0) {
+            animId = requestAnimationFrame(frame);
+          }
+        }
+        frame();
+      }
+      iniciarAnimacion();
+    </script>
+    """
+    html_code = html_template.replace("__DATOS_JSON__", datos_json)
+    components.html(html_code, height=255)
+
+
+# ==============================================================================
+# 5. INTERFAZ PRINCIPAL DE USUARIO (STREAMLIT)
+# ==============================================================================
+
+st.title("⚾ Simulador de Momentum e Interacciones Mecánicas en Béisbol")
+st.caption("Convención de signos: **(+)** hacia el receptor/home  |  **(−)** hacia el lanzador.")
+
+col_izq, col_der = st.columns([1.05, 1.45], gap="large")
+
+with col_izq:
+    st.subheader("1. Identificación del Usuario")
+    nombre = st.text_input("Nombre completo *", placeholder="Ej. Ana María Gómez")
+    identificacion = st.text_input("Código, documento o rol *", placeholder="Ej. Estudiante - Física I")
+
+    st.subheader("2. Parámetros del Escenario")
+    escenario_opcion = st.selectbox("Seleccione el escenario físico", list(ESCENARIOS.keys()))
+    escenario_obj = ESCENARIOS[escenario_opcion]
+
+    c_m1, c_v1 = st.columns(2)
+    with c_m1:
+        m1 = st.number_input("Masa Bola m₁ (kg)", min_value=0.001, value=0.145, step=0.005, format="%.3f")
+    with c_v1:
+        v1_i = st.number_input("Vel. Inicial Bola v₁ᵢ (m/s)", value=40.0, step=1.0, format="%.2f")
+
+    v1_f = 0.0
+    m2 = 0.85
+    v2_i = -25.0
+    e = 0.50
+
+    if escenario_obj.id_escenario == "individual":
+        v1_f = st.number_input("Vel. Final Bola v₁f (m/s)", value=-45.0, step=1.0, format="%.2f")
+    else:
+        c_m2, c_v2 = st.columns(2)
+        with c_m2:
+            m2 = st.number_input("Masa Bate/Guante m₂ (kg)", min_value=0.001, value=0.850, step=0.050, format="%.3f")
+        with c_v2:
+            v2_i = st.number_input("Vel. Inicial v₂ᵢ (m/s)", value=-25.0, step=1.0, format="%.2f")
+
+        if escenario_obj.id_escenario == "inelastico":
+            e = st.number_input(
+                "Coeficiente de restitución e (0 = atrapada, 0.5 = bateo)",
+                min_value=0.0,
+                max_value=0.999,
+                value=0.50,
+                step=0.05,
+                format="%.3f",
+            )
+
+    usar_dt = st.checkbox("Especificar tiempo de colisión / contacto Δt (s)", value=True)
+    dt: Optional[float] = None
+    if usar_dt:
+        dt = st.number_input(
+            "Tiempo de contacto Δt (s)",
+            min_value=0.00001,
+            value=0.00100,
+            step=0.00010,
+            format="%.5f",
+        )
+
+    ejecutar = st.button("Simular y Guardar Registro", type="primary", use_container_width=True)
+
+with col_der:
+    if ejecutar:
+        if not nombre.strip() or not identificacion.strip():
+            st.error("⚠️ Debe ingresar su nombre completo y su código/documento para registrar la simulación.")
+        else:
+            datos_entrada = {
+                "m1": m1,
+                "v1_i": v1_i,
+                "v1_f": v1_f,
+                "m2": m2,
+                "v2_i": v2_i,
+                "e": e,
+                "dt": dt,
+            }
+            resultado = escenario_obj.simular(datos_entrada)
+            guardar_registro(
+                {"nombre": nombre.strip(), "identificacion": identificacion.strip()},
+                resultado,
+            )
+            st.session_state["ultimo_resultado"] = resultado.a_diccionario()
+            st.success("✅ Simulación ejecutada y guardada en el historial.")
+
+    if "ultimo_resultado" in st.session_state:
+        res = st.session_state["ultimo_resultado"]
+        c1 = res["cuerpo_1"]
+        c2 = res["cuerpo_2"]
+        sis = res["sistema"]
+        q = res["preguntas"]
+
+        renderizar_animacion_canvas(res)
+
+        st.subheader("Estado Inicial y Final del Sistema")
+        m_col1, m_col2, m_col3 = st.columns(3)
+        m_col1.metric("Momento Bola (p₁ᵢ → p₁f)", f"{c1['momento_inicial']} → {c1['momento_final']} kg·m/s")
+        m_col2.metric("Impulso Bola (J₁ = Δp₁)", f"{c1['impulso']} N·s")
+        m_col3.metric("Vel. Bola (v₁ᵢ → v₁f)", f"{c1['vel_inicial']} → {c1['vel_final']} m/s")
+
+        m_col4, m_col5, m_col6 = st.columns(3)
+        m_col4.metric("Momento Sistema (Pᵢ → Pf)", f"{sis['momento_inicial']} → {sis['momento_final']} kg·m/s")
+        m_col5.metric("Energía Cinética (Kᵢ → Kf)", f"{sis['energia_inicial']} → {sis['energia_final']} J")
+        if c2:
+            m_col6.metric("Vel. Cuerpo 2 (v₂ᵢ → v₂f)", f"{c2['vel_inicial']} → {c2['vel_final']} m/s")
+        else:
+            m_col6.metric("Energía Bola (K₁ᵢ → K₁f)", f"{c1['energia_inicial']} → {c1['energia_final']} J")
+
+        st.subheader("Análisis Teórico (Preguntas de Control)")
+        st.info(f"**1. ¿Se conserva el momento lineal?:** {'SÍ' if q['conserva_momento'] else 'NO'}\n\n{q['razon_momento']}")
+        st.info(f"**2. ¿Se conserva la energía cinética?:** {'SÍ' if q['conserva_energia'] else 'NO'}\n\n{q['razon_energia']}")
+
+        if c1["fuerza_promedio"] is not None:
+            texto_fuerza = (
+                f"**3. Fuerza promedio experimentada (Δt = {res['tiempo_colision']} s):**\n\n"
+                f"- **Sobre {c1['nombre']}:** $F_{{prom}} = {c1['fuerza_promedio']}$ N (magnitud: {abs(c1['fuerza_promedio'])} N)\n"
+            )
+            if c2 and c2["fuerza_promedio"] is not None:
+                texto_fuerza += f"- **Sobre {c2['nombre']}:** $F_{{prom}} = {c2['fuerza_promedio']}$ N (3.ª Ley de Newton)"
+            st.success(texto_fuerza)
+        else:
+            st.warning("**3. Fuerza promedio experimentada:** No calculada (no se especificó un tiempo de colisión Δt).")
+    else:
+        st.info("👈 Complete sus datos y parámetros a la izquierda, luego presione **Simular y Guardar Registro**.")
+
+st.divider()
+st.subheader("📋 Historial de Simulaciones Registradas")
+
+if st.session_state["historial"]:
+    filas = []
+    for item in reversed(st.session_state["historial"]):
+        s = item["simulacion"]
+        f_val = f"{s['cuerpo_1']['fuerza_promedio']} N" if s["cuerpo_1"]["fuerza_promedio"] is not None else "—"
+        filas.append({
+            "Fecha y Hora": s["fecha_hora"],
+            "Usuario": f"{item['usuario']['nombre']} ({item['usuario']['identificacion']})",
+            "Escenario": s["escenario_nombre"],
+            "P inicial → P final (kg·m/s)": f"{s['sistema']['momento_inicial']} → {s['sistema']['momento_final']}",
+            "K inicial → K final (J)": f"{s['sistema']['energia_inicial']} → {s['sistema']['energia_final']}",
+            "Fuerza Promedio Bola": f_val,
+        })
+    st.dataframe(filas, use_container_width=True, hide_index=True)
+
+    st.download_button(
+        label="⬇️ Descargar historial completo en JSON",
+        data=json.dumps(st.session_state["historial"], indent=4, ensure_ascii=False),
+        file_name="historial_simulaciones.json",
+        mime="application/json",
+    )
+else:
+    st.caption("Aún no hay simulaciones registradas en esta sesión.")
